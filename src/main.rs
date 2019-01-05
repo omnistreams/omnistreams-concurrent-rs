@@ -18,13 +18,14 @@ fn main() {
 
         let mut mux = omnistreams_concurrent::Multiplexer::new(move |msg| {
             ws.send(msg).unwrap();
-        }, |mut stream, md| {
+        }, |stream, md| {
 
             let metadata: Value = serde_json::from_slice(md).unwrap();
             println!("{:?}", metadata);
 
-            stream.on_data(|_msg| {
-                println!("stream.on_data");
+            stream.on_data(|msg| {
+                let message: Value = serde_json::from_slice(msg).unwrap();
+                println!("{:?}", message);
             });
 
             stream.request(5);
@@ -44,7 +45,7 @@ fn main() {
                     println!("WARNING: text message received. unhandled");
                 },
                 Message::Binary(v) => {
-                    message_sender.send(v);
+                    message_sender.send(v).unwrap();
                 },
             }
 

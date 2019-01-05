@@ -3,6 +3,7 @@ const MESSAGE_TYPE_STREAM_DATA: u8 = 1;
 const MESSAGE_TYPE_STREAM_END: u8 = 2;
 const MESSAGE_TYPE_TERMINATE_SEND_STREAM: u8 = 3;
 const MESSAGE_TYPE_STREAM_ACK: u8 = 4;
+const MESSAGE_TYPE_CONTROL_MESSAGE: u8 = 5;
 
 use std::collections::HashMap;
 use omnistreams_core::{Producer};
@@ -12,7 +13,7 @@ pub struct Multiplexer<T, U, V>
     where T: Fn(&[u8]), U: Fn(&[u8]), V: Fn(&mut ReceiveStream<U>, &[u8])
 {
     send: T,
-    receive_streams: Vec<ReceiveStream<U>>,
+    receive_streams: HashMap<u8, ReceiveStream<U>>,
     on_stream: V,
     next_stream_id: u8,
 }
@@ -24,7 +25,7 @@ impl<T, U, V> Multiplexer<T, U, V>
         Multiplexer {
             send,
             on_stream,
-            receive_streams: Vec::new(),
+            receive_streams: HashMap::new(),
             next_stream_id: 0,
         }
     }
@@ -46,10 +47,14 @@ impl<T, U, V> Multiplexer<T, U, V>
                 let stream_id = self.next_stream_id;
                 self.next_stream_id += 1;
                 (self.on_stream)(&mut stream, data);
-                self.receive_streams.push(stream);
+                self.receive_streams.insert(stream_id, stream);
             },
             MESSAGE_TYPE_STREAM_DATA => {
-                println!("data for stream {}: {:?}", stream_id, data);
+                if let Some(producer) = self.receive_streams.get(&stream_id) {
+                    if let Some(callback) = &producer.data_callback {
+                        callback(data);
+                    }
+                }
             },
             MESSAGE_TYPE_STREAM_END => {
             },
@@ -60,7 +65,6 @@ impl<T, U, V> Multiplexer<T, U, V>
             _ => {
             },
         }
-        //(self.send)(msg);
     }
 }
 
