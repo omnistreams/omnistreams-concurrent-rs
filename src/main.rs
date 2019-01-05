@@ -1,22 +1,23 @@
-mod netstreams;
+mod omnistreams_concurrent;
 
 use ws::{listen, Message};
 
 fn main() {
-    let peer = netstreams::Peer::new();
 
     listen("127.0.0.1:9001", |ws| {
 
-        println!("Create connection");
+        println!("Create mux");
 
-        let conn = peer.create_connection(move |msg| {
+        let mut mux = omnistreams_concurrent::Multiplexer::new(move |msg| {
             ws.send(msg).unwrap();
-        }, |stream, metadata| {
+        }, |stream, _metadata| {
             //println!("handle stream: {:?}, {:?}", stream, metadata);
 
-            //stream.on_data(|| {
-            //});
+            stream.on_data(|_msg| {
+            });
         });
+
+        mux.handle_message(&[1,2,3]);
 
         move |msg| {
 
@@ -25,7 +26,7 @@ fn main() {
                     println!("WARNING: text message received. unhandled");
                 },
                 Message::Binary(v) => {
-                    conn.handle_message(&v);
+                    //mux.handle_message(&v);
                 },
             }
 

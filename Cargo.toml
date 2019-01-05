@@ -1,5 +1,5 @@
 [package]
-name = "netstreams-rs"
+name = "omnistreams_concurrent"
 version = "0.1.0"
 authors = ["Anders Pitman <tapitman11@gmail.com>"]
 edition = "2018"
@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 ws = "*"
 serde_json = "1.0"
+omnistreams_core = { path = "../omnistreams-core-rs" }
