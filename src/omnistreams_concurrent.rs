@@ -4,26 +4,28 @@ const MESSAGE_TYPE_STREAM_END: u8 = 2;
 const MESSAGE_TYPE_TERMINATE_SEND_STREAM: u8 = 3;
 const MESSAGE_TYPE_STREAM_ACK: u8 = 4;
 
-use serde_json;
-use serde_json::Value;
+use std::collections::HashMap;
+use omnistreams_core::{Producer};
 
 
 pub struct Multiplexer<T, U, V>
-    where T: Fn(&[u8]), U: Fn(&[u8]), V: Fn(&mut ReceiveStream<U>, Value)
+    where T: Fn(&[u8]), U: Fn(&[u8]), V: Fn(&mut ReceiveStream<U>, &[u8])
 {
     send: T,
     receive_streams: Vec<ReceiveStream<U>>,
     on_stream: V,
+    next_stream_id: u8,
 }
 
 impl<T, U, V> Multiplexer<T, U, V>
-    where T: Fn(&[u8]), U: Fn(&[u8]), V: Fn(&mut ReceiveStream<U>, Value)
+    where T: Fn(&[u8]), U: Fn(&[u8]), V: Fn(&mut ReceiveStream<U>, &[u8])
 {
     pub fn new(send: T, on_stream: V) -> Multiplexer<T, U, V> {
         Multiplexer {
             send,
             on_stream,
             receive_streams: Vec::new(),
+            next_stream_id: 0,
         }
     }
 
@@ -35,11 +37,16 @@ impl<T, U, V> Multiplexer<T, U, V>
 
         match message_type {
             MESSAGE_TYPE_CREATE_RECEIVE_STREAM => {
-                let metadata: Value = serde_json::from_slice(data).unwrap();
-                println!("create stream {}: {:?}", stream_id, metadata);
-                let mut stream = ReceiveStream::new();
+                println!("create stream {}: {:?}", stream_id, data);
+                let request = |num_items| {
+                    println!("request called: {}", num_items);
+                };
+
+                let mut stream = ReceiveStream::new(request);
+                let stream_id = self.next_stream_id;
+                self.next_stream_id += 1;
+                (self.on_stream)(&mut stream, data);
                 self.receive_streams.push(stream);
-                //(self.on_stream)(&mut stream, metadata);
             },
             MESSAGE_TYPE_STREAM_DATA => {
                 println!("data for stream {}: {:?}", stream_id, data);
@@ -61,22 +68,34 @@ impl<T, U, V> Multiplexer<T, U, V>
 pub struct ReceiveStream<V>
     where V: Fn(&[u8])
 {
-    on_data_callback: Option<V>,
+    data_callback: Option<V>,
+    upstream_request: fn(u8),
 }
 
 impl<V> ReceiveStream<V>
     where V: Fn(&[u8])
 {
-    pub fn new() -> ReceiveStream<V> {
+    pub fn new(upstream_request: fn(u8)) -> ReceiveStream<V> {
+
         ReceiveStream {
-            on_data_callback: None,
+            data_callback: None,
+            upstream_request,
         }
     }
+}
 
-    pub fn on_data(&mut self, callback: V) {
-        self.on_data_callback = Some(callback);
+impl<V> Producer<V> for ReceiveStream<V>
+    where V: Fn(&[u8])
+{
+    fn on_data(&mut self, callback: V) {
+        self.data_callback = Some(callback);
+    }
+
+    fn request(&self, num_items: u8) {
+        (self.upstream_request)(num_items);
     }
 }
+
 
 #[cfg(test)]
 mod tests {
