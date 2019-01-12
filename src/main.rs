@@ -39,18 +39,20 @@ fn main() {
     listen("127.0.0.1:9001", |out| {
     println!("Create mux");
 
-    let mut mux = omnistreams_concurrent::Multiplexer::new();
-
     let (tx, rx): (ChannelSender<Vec<u8>>, ChannelReceiver<Vec<u8>>) = mpsc::channel();
 
     let sender = out.clone();
 
     thread::spawn(move || {
+        let mut mux = omnistreams_concurrent::Multiplexer::new();
 
         mux.on_conduit(|mut producer, metadata| {
             producer.on_data(|data| {
                 println!("got data: {:?}", data);
+                //producer.request(1);
             });
+
+            producer.request(10);
         });
 
         mux.set_send_handler(move |msg| {

@@ -2,15 +2,16 @@ const MESSAGE_TYPE_CREATE_RECEIVE_STREAM: u8 = 0;
 const MESSAGE_TYPE_STREAM_DATA: u8 = 1;
 const MESSAGE_TYPE_STREAM_END: u8 = 2;
 const MESSAGE_TYPE_TERMINATE_SEND_STREAM: u8 = 3;
-const MESSAGE_TYPE_STREAM_ACK: u8 = 4;
+const MESSAGE_TYPE_STREAM_REQUEST_DATA: u8 = 4;
 const MESSAGE_TYPE_CONTROL_MESSAGE: u8 = 5;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use omnistreams_core::{Producer};
 
 pub struct Multiplexer {
-    send: Box<Fn(&[u8]) + Send>,
-    conduit_callback: Box<Fn(&mut ReceiveStream, &[u8]) + Send>,
+    send: Rc<Fn(&[u8])>,
+    conduit_callback: Box<Fn(&mut ReceiveStream, &[u8])>,
     next_stream_id: u8,
     receive_streams: HashMap<u8, ReceiveStream>,
 }
@@ -18,15 +19,16 @@ pub struct Multiplexer {
 impl Multiplexer {
     pub fn new() -> Multiplexer {
         Multiplexer {
-            send: Box::new(|msg| {}),
+            send: Rc::new(|msg| {}),
             conduit_callback: Box::new(|mut producer, metadata| {}),
             next_stream_id: 0,
             receive_streams: HashMap::new(),
         }
     }
 
-    pub fn set_send_handler<C: 'static + Fn(&[u8]) + Send>(&mut self, callback: C) {
-        self.send = Box::new(callback);
+    pub fn set_send_handler<C: 'static + Fn(&[u8])>(&mut self, callback: C) {
+        //self.send = Box::new(callback);
+        self.send = Rc::new(callback);
     }
 
     pub fn handle_message(&mut self, msg: &[u8]) {
@@ -39,9 +41,11 @@ impl Multiplexer {
             MESSAGE_TYPE_CREATE_RECEIVE_STREAM => {
                 println!("create stream {}: {:?}", stream_id, data);
 
-                let request = |num_items| {
-                    //println!("request called: {}", );
-                    //(self.send)(&[1,2,3])
+                let send = self.send.clone();
+
+                let request = move |num_items| {
+                    println!("request called: {}", num_items);
+                    send(&[MESSAGE_TYPE_STREAM_REQUEST_DATA, stream_id, num_items]);
                 };
 
                 let mut producer = ReceiveStream {
@@ -62,26 +66,31 @@ impl Multiplexer {
             },
             MESSAGE_TYPE_TERMINATE_SEND_STREAM=> {
             },
-            MESSAGE_TYPE_STREAM_ACK => {
+            MESSAGE_TYPE_STREAM_REQUEST_DATA => {
             },
             _ => {
             },
         }
     }
 
-    pub fn on_conduit<C: 'static + Fn(&mut ReceiveStream, &[u8]) + Send>(&mut self, callback: C) {
+    pub fn on_conduit<C: 'static + Fn(&mut ReceiveStream, &[u8])>(&mut self, callback: C) {
         self.conduit_callback = Box::new(callback);
     }
 }
 
 pub struct ReceiveStream {
-    data_callback: Box<Fn(&[u8]) + Send>,
-    upstream_request: Box<Fn(u8) + Send>,
+    data_callback: Box<Fn(&[u8])>,
+    upstream_request: Box<Fn(u8)>,
 }
 
 impl ReceiveStream {
-    pub fn on_data<C: 'static + Fn(&[u8]) + Send>(&mut self, callback: C) {
+    pub fn on_data<C: 'static + Fn(&[u8])>(&mut self, callback: C) {
         self.data_callback = Box::new(callback);
+    }
+
+    pub fn request(&mut self, num_items: u8) {
+        println!("requested: {}", num_items);
+        (self.upstream_request)(num_items);
     }
 }
 
